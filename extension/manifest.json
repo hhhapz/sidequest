@@ -1,8 +1,11 @@
 {
 	"manifest_version": 3,
 	"name": "UW Sidequest",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Adds instructors, rooms and open/closed status from Quest to UW Flow's course schedule.",
+	"icons": {
+		"128": "icons/sidequest-128.png"
+	},
 	"permissions": ["storage"],
 	"host_permissions": ["https://quest.pecs.uwaterloo.ca/*"],
 	"background": {
@@ -25,7 +28,7 @@
 	"browser_specific_settings": {
 		"gecko": {
 			"id": "sidequest@hamza.sh",
-			"strict_min_version": "128.0",
+			"strict_min_version": "140.0",
 			"data_collection_permissions": { "required": ["websiteContent"] }
 		}
 	}

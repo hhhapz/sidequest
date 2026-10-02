@@ -4,7 +4,7 @@ A Browser extension Chrome and Firefox that adds Instructor, Room and Status inf
 
 This extension uses your own signed-in UW Quest session, you must be able to access sensitive class information to see it within Quest.
 
-![](sidequest.png)
+![UW Sidequest adding Quest details to the UW Flow course schedule](assets/sidequest-screenshot.png)
 
 ## Why?
 
