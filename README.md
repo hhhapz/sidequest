@@ -13,7 +13,10 @@ This extension uses your own signed-in UW Quest session, you must be able to acc
 
 ### Chrome
 
-1. Download the ZIP file above.
+1. Download the extension archive:
+
+   [![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.1.1/sidequest-v0.1.1.zip)
+
 2. Unzip it.
 3. Open `chrome://extensions`.
 4. Turn on Developer mode.
