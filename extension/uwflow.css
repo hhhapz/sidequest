@@ -1,0 +1,91 @@
+/* the cells we add are copies of uwflow's own, only the status is coloured */
+.sq-col .sq-closed,
+.sq-col .sq-waitlist { color: #b3261e !important; }
+.sq-col .sq-open { color: #15803d !important; }
+
+/* chip in the schedule heading */
+#sq-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  margin-left: 12px !important;
+  padding: 3px 5px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  font: 500 12px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  color: #374151 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  vertical-align: middle !important;
+  white-space: nowrap !important;
+}
+#sq-chip:empty { display: none !important; }
+#sq-chip:hover { background: #f1f0f9 !important; }
+#sq-chip .sq-mark { font-weight: 700 !important; color: #6c5ce7 !important; letter-spacing: .005em !important; }
+#sq-chip .sq-status {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  line-height: 1.18 !important;
+}
+#sq-chip .sq-word { font-weight: 500 !important; }
+#sq-chip .sq-sub { color: #6b7280 !important; font-size: 10px !important; }
+#sq-chip .sq-dot {
+  width: 7px !important; height: 7px !important;
+  border-radius: 50% !important;
+  background: #9ca3af !important;
+  flex: none !important;
+}
+#sq-chip .sq-dot.live { background: #16a34a !important; }
+#sq-chip .sq-dot.cached { background: #8b7fd6 !important; }
+#sq-chip .sq-dot.alert { background: #dc2626 !important; }
+#sq-chip .sq-dot.load { background: #3b82f6 !important; }
+#sq-chip .sq-dot.load { animation: sq-pulse 1.15s ease-in-out infinite !important; }
+@keyframes sq-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+#sq-chip .sq-caret { color: #9ca3af !important; font-size: 9px !important; transition: transform .15s ease !important; }
+#sq-chip.open .sq-caret { transform: rotate(180deg) !important; }
+
+/* dropdown under the chip, positioned from uwflow.js */
+#sq-panel {
+  position: fixed !important;
+  z-index: 2147483000 !important;
+  width: 252px !important;
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 4px !important;
+  box-shadow: 0 4px 16px -4px rgba(17, 24, 39, .16), 0 1px 4px rgba(17, 24, 39, .08) !important;
+  padding: 12px !important;
+  font: 400 12px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  cursor: default !important;
+}
+#sq-panel .sq-head { display: flex !important; align-items: baseline !important; gap: 6px !important; font-weight: 600 !important; }
+#sq-panel .sq-mark { font-weight: 700 !important; color: #6c5ce7 !important; }
+#sq-panel .sq-head .term { color: #6b7280 !important; font-weight: 500 !important; }
+#sq-panel .sq-rule { height: 1px !important; background: #e5e7eb !important; margin: 10px -12px !important; }
+#sq-panel .sq-line { display: flex !important; gap: 8px !important; }
+#sq-panel .sq-line .sq-dot {
+  width: 8px !important; height: 8px !important; margin-top: 4px !important;
+  border-radius: 50% !important; background: #9ca3af !important; flex: none !important;
+}
+#sq-panel .sq-line .sq-dot.live { background: #16a34a !important; }
+#sq-panel .sq-line .sq-dot.cached { background: #8b7fd6 !important; }
+#sq-panel .sq-line .sq-dot.alert { background: #dc2626 !important; }
+#sq-panel .sq-line .sq-dot.load { background: #3b82f6 !important; }
+#sq-panel .sq-actions { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center !important; margin-top: 11px !important; }
+#sq-panel .sq-btn {
+  display: inline-flex !important; align-items: center !important; gap: 6px !important;
+  background: #6c5ce7 !important; color: #ffffff !important;
+  border: 0 !important; border-radius: 3px !important;
+  padding: 6px 12px !important;
+  font: 600 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  cursor: pointer !important;
+}
+#sq-panel .sq-btn:hover { background: #5a49d6 !important; }
+#sq-panel .sq-note { margin-top: 9px !important; color: #6b7280 !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  #sq-chip .sq-dot { animation: none !important; }
+  #sq-chip .sq-caret { transition: none !important; }
+}
