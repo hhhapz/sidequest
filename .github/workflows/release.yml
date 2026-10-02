@@ -1,0 +1,33 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: check tag matches manifest version
+        run: test "v$(jq -r .version extension/manifest.json)" = "$GITHUB_REF_NAME"
+
+      - name: zip for chrome
+        run: cd extension && zip -r "../sidequest-$GITHUB_REF_NAME.zip" .
+
+      - name: sign for firefox
+        run: |
+          npx --yes web-ext sign --channel=unlisted --source-dir=extension --artifacts-dir=signed
+          mv signed/*.xpi "sidequest-$GITHUB_REF_NAME.xpi"
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+
+      - name: release
+        run: gh release create "$GITHUB_REF_NAME" "sidequest-$GITHUB_REF_NAME.zip" "sidequest-$GITHUB_REF_NAME.xpi" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
