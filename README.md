@@ -20,9 +20,10 @@ This extension uses your own signed-in UW Quest session, you must be able to acc
 5. Click Load unpacked and select the unzipped folder containing `manifest.json`.
 
 ### Firefox 140 or newer
-[![Firefox XPI](https://img.shields.io/badge/Firefox-install%20XPI-FF7139?logo=firefoxbrowser&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.1.1/sidequest-v0.1.1.xpi)
 
 Clicky:
+
+[![Firefox XPI](https://img.shields.io/badge/Firefox-install%20XPI-FF7139?logo=firefoxbrowser&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.1.1/sidequest-v0.1.1.xpi)
 
 
 ## Why?
