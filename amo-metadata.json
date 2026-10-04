@@ -1,0 +1,6 @@
+{
+  "categories": ["search-tools"],
+  "summary": { "en-US": "A cleaner Quest class search with UW Flow ratings, and Quest's instructors, rooms and status on UW Flow." },
+  "homepage": { "en-US": "https://github.com/hhhapz/sidequest" },
+  "version": { "license": "all-rights-reserved" }
+}

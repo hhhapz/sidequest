@@ -1,7 +1,7 @@
 # UW Sidequest
 
-[![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.1/sidequest-v0.2.1.zip)
-[![Firefox XPI](https://img.shields.io/badge/Firefox-install%20XPI-FF7139?logo=firefoxbrowser&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.1/sidequest-v0.2.1.xpi)
+[![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.2/sidequest-v0.2.2.zip)
+[![Firefox Add-ons](https://img.shields.io/badge/Firefox-get%20the%20add--on-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/uw-sidequest/)
 
 > Note: This extension is not affiliated with the University of Waterloo
 
@@ -26,7 +26,7 @@ This extension uses your own signed-in UW Quest session, you must be able to acc
 
 1. Download the extension archive:
 
-   [![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.1/sidequest-v0.2.1.zip)
+   [![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.2/sidequest-v0.2.2.zip)
 
 2. Unzip it.
 3. Open `chrome://extensions`.
@@ -35,9 +35,7 @@ This extension uses your own signed-in UW Quest session, you must be able to acc
 
 ### Firefox 140 or newer
 
-Clicky:
-
-[![Firefox XPI](https://img.shields.io/badge/Firefox-install%20XPI-FF7139?logo=firefoxbrowser&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.1/sidequest-v0.2.1.xpi)
+[![Firefox Add-ons](https://img.shields.io/badge/Firefox-get%20the%20add--on-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/uw-sidequest/)
 
 
 ## Why?
