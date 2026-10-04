@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "UW Sidequest",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "A cleaner Quest class search with UW Flow ratings, and Quest's instructors, rooms and status on UW Flow.",
 	"icons": {
 		"128": "icons/sidequest-128.png"
