@@ -1,15 +1,24 @@
 # UW Sidequest
 
-[![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.0/sidequest-v0.2.0.zip)
-[![Firefox XPI](https://img.shields.io/badge/Firefox-install%20XPI-FF7139?logo=firefoxbrowser&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.0/sidequest-v0.2.0.xpi)
+[![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.1/sidequest-v0.2.1.zip)
+[![Firefox XPI](https://img.shields.io/badge/Firefox-install%20XPI-FF7139?logo=firefoxbrowser&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.1/sidequest-v0.2.1.xpi)
 
-A Browser extension Chrome and Firefox that adds Instructor, Room and Status information to the Course Schedule table on [uwflow.com](https://uwflow.com).
+> Note: This extension is not affiliated with the University of Waterloo
 
-It also replaces Quest's class search with one containing various improvements; a UI refresh, autocomplete, displaying UWFlow information, multiple courses, and instructor teaching history.
+A browser extension for Chrome and Firefox that replaces Quest's class search with one containing various improvements; a UI refresh, autocomplete, displaying UWFlow information, multiple courses, and instructor teaching history.
+
+It also adds Instructor, Room and Status information to the Course Schedule table on [uwflow.com](https://uwflow.com).
 
 This extension uses your own signed-in UW Quest session, you must be able to access sensitive class information to see it within Quest.
 
-![UW Sidequest adding Quest details to the UW Flow course schedule](assets/sidequest-screenshot.png)
+![](assets/quest-ui.png)
+
+<details>
+<summary>More screenshots</summary>
+
+![](assets/sidequest-screenshot.png)
+
+</details>
 
 ## Installation
 
@@ -17,7 +26,7 @@ This extension uses your own signed-in UW Quest session, you must be able to acc
 
 1. Download the extension archive:
 
-   [![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.0/sidequest-v0.2.0.zip)
+   [![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.1/sidequest-v0.2.1.zip)
 
 2. Unzip it.
 3. Open `chrome://extensions`.
@@ -28,7 +37,7 @@ This extension uses your own signed-in UW Quest session, you must be able to acc
 
 Clicky:
 
-[![Firefox XPI](https://img.shields.io/badge/Firefox-install%20XPI-FF7139?logo=firefoxbrowser&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.0/sidequest-v0.2.0.xpi)
+[![Firefox XPI](https://img.shields.io/badge/Firefox-install%20XPI-FF7139?logo=firefoxbrowser&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.1/sidequest-v0.2.1.xpi)
 
 
 ## Why?
