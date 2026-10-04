@@ -49,7 +49,7 @@ class Client {
 
     for (let tries = 0; ; tries++) {
       try {
-        const form = new Form(await this.send(searchURL(block || site + '_newwin')));
+        const form = searchForm(await this.send(searchURL(block || site + '_newwin')));
         block = form.block;
         await api.storage.session.set({ [key]: block });
 
@@ -177,7 +177,12 @@ async function page(msg, sender) {
   return {};
 }
 
-const handlers = { cached, refresh, signin, page };
+async function options() {
+  await api.runtime.openOptionsPage();
+  return {};
+}
+
+const handlers = { cached, refresh, signin, page, options };
 
 api.runtime.onMessage.addListener((msg, sender, respond) => {
   const handler = handlers[msg.type];

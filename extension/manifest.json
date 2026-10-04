@@ -1,8 +1,8 @@
 {
 	"manifest_version": 3,
 	"name": "UW Sidequest",
-	"version": "0.1.1",
-	"description": "Adds instructors, rooms and open/closed status from Quest to UW Flow's course schedule.",
+	"version": "0.2.0",
+	"description": "A cleaner Quest class search with UW Flow ratings, and Quest's instructors, rooms and status on UW Flow.",
 	"icons": {
 		"128": "icons/sidequest-128.png"
 	},
@@ -11,6 +11,10 @@
 	"background": {
 		"service_worker": "background.js",
 		"scripts": ["quest.js", "background.js"]
+	},
+	"options_ui": {
+		"page": "options.html",
+		"open_in_tab": true
 	},
 	"content_scripts": [
 		{
@@ -21,7 +25,9 @@
 		},
 		{
 			"matches": ["https://quest.pecs.uwaterloo.ca/*"],
-			"js": ["questtab.js"],
+			"js": ["quest.js", "questtab.js", "questsearch.js", "questpage.js"],
+			"css": ["questsearch.css"],
+			"all_frames": true,
 			"run_at": "document_idle"
 		}
 	],

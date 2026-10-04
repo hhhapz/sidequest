@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sidequest settings</title>
+<style>
+  :root { color-scheme: light dark; --ink: #15171c; --muted: #5b6170; --line: #e2e5ea; --ground: #f5f6f8; --card: #ffffff; --accent: #6c5ce7; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #e8e9ec; --muted: #a0a5b0; --line: #2c3038; --ground: #15171c; --card: #1d2026; --accent: #a99cf5; }
+  }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 400 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { margin: 0; font-size: 20px; color: var(--accent); }
+  h2 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  label { display: flex; gap: 12px; padding: 14px 16px; cursor: pointer; }
+  label + label { border-top: 1px solid var(--line); }
+  input { margin-top: 3px; width: 16px; height: 16px; flex: none; }
+  .what { font-weight: 500; }
+  .why { color: var(--muted); font-size: 13px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  #done { color: var(--muted); font-size: 13px; }
+  p { margin: 0; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Sidequest</h1>
+<div>
+<h2>Features</h2>
+<section id="flags"></section>
+</div>
+<p>Changes apply on reload, except compact mode.</p>
+<div class="actions">
+<button id="reset">Reset to defaults</button>
+<button id="forget">Clear cache</button>
+<span id="done" role="status"></span>
+</div>
+</main>
+<script src="options.js"></script>
+</body>
+</html>
