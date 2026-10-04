@@ -187,7 +187,8 @@ function parseResults(page) {
     throw new Stale('Unexpected Quest page');
   }
 
-  const m = xml.match(/\| (Winter|Spring|Fall) 20(\d\d)</);
+  // the term label carries invisible direction marks, which clean drops
+  const m = clean(xml.replace(/<script[\s\S]*?<\/script>/g, '')).match(/\| (Winter|Spring|Fall) 20(\d\d)\b/);
   const term = m ? `1${m[2]}${{ Winter: 1, Spring: 5, Fall: 9 }[m[1]]}` : null;
   return { term, sections };
 }
@@ -235,9 +236,9 @@ function currentTerm() {
   return `1${String(now.getFullYear() % 100).padStart(2, '0')}${start}`;
 }
 
-function recentTerms() {
+function recentTerms(count) {
   const list = [currentTerm()];
-  while (list.length < 6) {
+  while (list.length < count) {
     list.push(previousTerm(list[list.length - 1]));
   }
   return list;

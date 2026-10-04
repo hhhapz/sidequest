@@ -8,7 +8,9 @@ const FLAGS = [
   ['questSearch', 'Class search', 'Replaces Quest’s class search.'],
   ['questSuggest', 'Autocomplete', 'Courses, subjects and instructors from UW Flow.'],
   ['questRatings', 'Ratings and enrolment', 'Course and instructor ratings, and daily enrolment, from UW Flow.'],
-  ['questCourseInfo', 'Course details', 'Requisites, Leads To and reviews from UW Flow.'],
+  ['questCourseInfo', 'Course details', 'Panel with requisites and Leads To from UW Flow.'],
+  ['questSidebar', 'Sidebar', 'Course details beside the results on wide screens.'],
+  ['questReviews', 'Reviews', 'Review comments and liked, easy and useful ratings from UW Flow.'],
   ['questHistory', 'Teaching history', 'An instructor’s courses over the last six terms. One Quest search per term.'],
   ['questDetail', 'Live enrolment', 'Click enrolment for Quest’s live seats, waitlist and notes.'],
   ['questRemember', 'Remember last search', 'Restores the last search and filters.'],
@@ -41,6 +43,7 @@ function render() {
     return label;
   });
   document.getElementById('flags').replaceChildren(...rows);
+  document.getElementById('terms').value = flags.termCount || 6;
 }
 
 function done(text) {
@@ -59,6 +62,13 @@ document.getElementById('forget').onclick = async () => {
   const keys = Object.keys(all).filter((key) => key.startsWith('c:') || key.startsWith('r:') || key === 'lastSearch' || key === 'flowIndex');
   await api.storage.local.remove(keys);
   done(`Cleared ${keys.length} ${keys.length === 1 ? 'item' : 'items'}.`);
+};
+
+const terms = document.getElementById('terms');
+terms.onchange = () => {
+  flags.termCount = Math.min(12, Math.max(2, Number(terms.value) || 6));
+  terms.value = flags.termCount;
+  api.storage.local.set({ flags });
 };
 
 api.storage.local.get('flags').then((stored) => {

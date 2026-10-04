@@ -47,6 +47,7 @@ html.sq-take body { overflow: visible !important; }
   min-height: 34px; padding: 0 14px; border-radius: 17px;
   border: 1px solid #d5d9e0; background: #ffffff; cursor: pointer;
 }
+#sq-root .sq-count-terms { min-height: 34px; padding: 0 8px; border: 1px solid #d5d9e0; border-radius: 17px; background: #ffffff; color: #5b6170; font: inherit; font-size: 13px; cursor: pointer; }
 #sq-root .sq-term.sq-old { border-style: dashed; color: #5b6170; }
 #sq-root .sq-term[aria-pressed="true"] { background: #15171c; border-color: #15171c; color: #ffffff; font-weight: 500; }
 

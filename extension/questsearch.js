@@ -42,6 +42,11 @@ function on(flag) {
   return flags[flag] !== false;
 }
 
+// how many terms to offer, counting the current one
+function termCount() {
+  return flags.termCount || 6;
+}
+
 async function questFetch(url, init) {
   let res;
   try {
@@ -86,8 +91,17 @@ async function entry() {
 }
 
 async function search(values) {
-  const { form } = await entry();
-  let page = await post(form, { ICAction: SEARCH, ...values });
+  let { form, page } = await entry();
+
+  // like quest's own page, a listed term is changed in a round trip of its own first,
+  // otherwise the search can come back for the term the block was already on
+  const term = form.field('CLASS_SRCH_WRK2_STRM');
+  const want = values.CLASS_SRCH_WRK2_STRM;
+  if (form.fields.get(term) !== want && termsOf(page).includes(want)) {
+    form = new Form(await post(form, { ICAction: term, CLASS_SRCH_WRK2_STRM: want }));
+  }
+
+  page = await post(form, { ICAction: SEARCH, ...values });
   if (isPrompt(page)) {
     page = await post(new Form(page), { ICAction: '#ICSave' });
   }
@@ -204,7 +218,7 @@ async function taught(target, term) {
 }
 
 async function loadHistory(target, id) {
-  state.history = recentTerms().map((term) => ({ term, state: 'loading' }));
+  state.history = recentTerms(termCount()).map((term) => ({ term, state: 'loading' }));
   render();
 
   for (const entry of state.history) {

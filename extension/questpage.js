@@ -18,14 +18,10 @@ const checks = {};
 const unfolded = new Set();
 
 let terms = [];
+let listed = [];
 let picks = [];
 let active = -1;
 let ui = null;
-
-function choose(target) {
-	add(target);
-	run();
-}
 
 function add(target) {
 	if (!state.items.some((item) => item.label === target.label)) {
@@ -72,19 +68,34 @@ function linkCodes(text) {
 	let at = 0;
 	for (const m of text.matchAll(/\b([A-Z]{2,7}) ?(\d{3}[A-Z]?)\b/g)) {
 		nodes.push(text.slice(at, m.index));
-		nodes.push(button("sq-code-link", `${m[1]} ${m[2]}`, () => goTo(m[1] + m[2])));
+		nodes.push(courseLink(m[1] + m[2], `${m[1]} ${m[2]}`));
 		at = m.index + m[0].length;
 	}
 	nodes.push(text.slice(at));
 	return nodes;
 }
 
-function goTo(code) {
-	state.items = [courseTarget(code.toLowerCase())];
+function courseLink(code, label) {
+	const node = button("sq-code-link", label, (event) =>
+		goTo(code, event.shiftKey),
+	);
+	node.title = "Shift-click to add to search";
+	return node;
+}
+
+// shift adds the course to the search instead of replacing it
+function goTo(code, add) {
+	const target = courseTarget(code.toLowerCase());
+	if (!add) {
+		state.items = [];
+		state.drawer = null;
+		state.panel = false;
+		window.scrollTo({ top: 0, behavior: "smooth" });
+	}
+	if (!state.items.some((item) => item.label === target.label)) {
+		state.items.push(target);
+	}
 	state.query = "";
-	state.drawer = null;
-	state.panel = false;
-	window.scrollTo({ top: 0, behavior: "smooth" });
 	run();
 }
 
@@ -96,6 +107,21 @@ function openDrawer(code) {
 
 // on a wide screen the panel sits beside the results and shows the first course
 // until another is picked, otherwise it only slides in when asked for
+// quest only lists about a year back but answers for older terms too
+function buildTerms() {
+	const now = currentTerm();
+	terms = recentTerms(termCount())
+		.reverse()
+		.map((code) => ({ code, old: !listed.includes(code) }));
+	for (const code of listed.filter((code) => code > now)) {
+		terms.push({ code, old: false });
+	}
+}
+
+function beside() {
+	return WIDE.matches && on("questSidebar");
+}
+
 function panelCode() {
 	if (state.status !== "ok" || !on("questCourseInfo")) {
 		return null;
@@ -103,24 +129,26 @@ function panelCode() {
 	const codes = [
 		...new Set(state.sections.filter(visible).map((s) => flowCode(s.course))),
 	].filter((code) => flowCourses.has(code));
-	if (codes.length === 0 || (!WIDE.matches && !state.panel)) {
+	if (codes.length === 0 || (!beside() && !state.panel)) {
 		return null;
 	}
 	if (codes.includes(state.drawer)) {
 		return state.drawer;
 	}
-	return WIDE.matches ? codes[0] : null;
+	return beside() ? codes[0] : null;
 }
 
 function renderDrawer() {
 	const code = panelCode();
 	ui.drawer.hidden = code === null;
-	ui.layout.classList.toggle("sq-with-panel", code !== null && WIDE.matches);
+	ui.layout.classList.toggle("sq-with-panel", code !== null && beside());
 	if (code === null) {
 		ui.drawer.replaceChildren();
 		return;
 	}
-	loadReviews(code);
+	if (on("questReviews")) {
+		loadReviews(code);
+	}
 	const flow = flowCourses.get(code);
 
 	const close = button("sq-close", "×", () => {
@@ -144,7 +172,7 @@ function renderDrawer() {
 			),
 			close,
 		),
-		meters(flow),
+		on("questReviews") && meters(flow),
 		flow.description && desc,
 		panelPart(
 			"Prerequisites",
@@ -174,8 +202,9 @@ function renderDrawer() {
 						el(
 							"div",
 							"sq-lead",
-							button("sq-code-link", courseTarget(p.postrequisite.code).label, () =>
-								goTo(p.postrequisite.code),
+							courseLink(
+								p.postrequisite.code,
+								courseTarget(p.postrequisite.code).label,
 							),
 							el("span", "sq-lead-name", p.postrequisite.name),
 						),
@@ -185,11 +214,13 @@ function renderDrawer() {
 		);
 	}
 
-	parts.push(
-		panelPart("Reviews", ...reviews(flow.code)),
-		link("sq-link", "All reviews ›", `${FLOW}/course/${flow.code}`),
-	);
-	ui.drawer.replaceChildren(...parts);
+	if (on("questReviews")) {
+		parts.push(
+			panelPart("Reviews", ...reviews(flow.code)),
+			link("sq-link", "All reviews ›", `${FLOW}/course/${flow.code}`),
+		);
+	}
+	ui.drawer.replaceChildren(...parts.filter(Boolean));
 }
 
 function panelPart(name, ...body) {
@@ -352,7 +383,7 @@ function shell() {
 		}
 		if (event.key === "Enter" && active >= 0) {
 			event.preventDefault();
-			choose(picks[active]);
+			add(picks[active]);
 			return;
 		}
 		if ((event.key === "Tab" || event.key === ",") && picks.length > 0) {
@@ -431,7 +462,8 @@ function shell() {
 				"div",
 				"sq-bar",
 				el("span", "sq-brand", "Sidequest"),
-				el("span", "sq-crumb", "Class search"),
+				el("span", "sq-crumb", "v" + api.runtime.getManifest().version),
+				link("sq-link", "GitHub", "https://github.com/hhhapz/sidequest"),
 				el("span", "sq-gap"),
 				settings,
 				original,
@@ -461,7 +493,7 @@ function renderPicks() {
 			item.setAttribute("role", "option");
 			item.setAttribute("aria-selected", i === active);
 			item.onmousedown = (event) => event.preventDefault();
-			item.onclick = () => choose(pick);
+			item.onclick = () => add(pick);
 			return item;
 		}),
 	);
@@ -481,9 +513,6 @@ function render() {
 				state.items.splice(i, 1);
 				render();
 				ui.input.focus();
-				if (state.status !== "idle" && state.items.length > 0) {
-					run();
-				}
 			});
 			remove.setAttribute("aria-label", "Remove " + item.label);
 			return el("span", "sq-tag", item.label, remove);
@@ -518,6 +547,22 @@ function render() {
 			return b;
 		}),
 	);
+	if (terms.length > 0) {
+		const count = document.createElement("select");
+		count.className = "sq-count-terms";
+		count.setAttribute("aria-label", "Terms shown");
+		for (let n = 2; n <= 12; n++) {
+			count.append(new Option(`${n} terms`, n));
+		}
+		count.value = termCount();
+		count.onchange = () => {
+			flags.termCount = Number(count.value);
+			api.storage.local.set({ flags });
+			buildTerms();
+			render();
+		};
+		ui.terms.prepend(count);
+	}
 	renderPicks();
 	ui.results.replaceChildren(...results());
 	renderDrawer();
@@ -624,13 +669,11 @@ function taughtCourses(entry) {
 	}
 
 	return [...courses].map(([course, info]) => {
-		const pick = button("sq-link sq-hist-course", course, () => {
-			state.items = [courseTarget(flowCode(course))];
-			state.query = "";
+		const pick = button("sq-link sq-hist-course", course, (event) => {
 			state.term = entry.term;
-			run();
+			goTo(flowCode(course), event.shiftKey);
 		});
-		pick.title = info.title;
+		pick.title = `${info.title} · Shift-click to add to search`;
 		if (info.components.has("LEC")) {
 			return pick;
 		}
@@ -714,7 +757,7 @@ function courseCard(group) {
 	}
 	return el(
 		"section",
-		code === panelCode() && WIDE.matches ? "sq-card sq-course sq-focus" : "sq-card sq-course",
+		code === panelCode() && beside() ? "sq-card sq-course sq-focus" : "sq-card sq-course",
 		head,
 		el("div", "sq-scroll", table),
 	);
@@ -818,7 +861,9 @@ function sectionRow(s, week) {
 function enrolled(key, s) {
 	const entry = details.get(key);
 	const seats =
-		entry && entry.state === "ok" ? entry.detail : flowSeats.get(key);
+		entry && entry.state === "ok"
+			? entry.detail
+			: on("questRatings") && flowSeats.get(key);
 
 	let text = "—";
 	let full = false;
@@ -945,16 +990,9 @@ async function start() {
 		return;
 	}
 
-	// quest only lists about a year back but answers for older terms too
-	const listed = termsOf(page);
-	const now = currentTerm();
-	terms = recentTerms()
-		.reverse()
-		.map((code) => ({ code, old: !listed.includes(code) }));
-	for (const code of listed.filter((code) => code > now)) {
-		terms.push({ code, old: false });
-	}
-	state.term = now;
+	listed = termsOf(page);
+	buildTerms();
+	state.term = currentTerm();
 
 	const stored = await api.storage.local.get("lastSearch");
 	let again = restore(stored.lastSearch);

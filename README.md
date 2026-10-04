@@ -5,7 +5,7 @@
 
 A Browser extension Chrome and Firefox that adds Instructor, Room and Status information to the Course Schedule table on [uwflow.com](https://uwflow.com).
 
-It also replaces Quest's class search with its own: one search box with autocomplete for courses, subjects and instructors, multiple courses at once (`CS 246, MATH 239`), whole levels (`CS 2`), UW Flow ratings, enrolment, requisites and reviews, and an instructor's teaching history. Each feature can be turned off in the extension's settings.
+It also replaces Quest's class search with one containing various improvements; a UI refresh, autocomplete, displaying UWFlow information, multiple courses, and instructor teaching history.
 
 This extension uses your own signed-in UW Quest session, you must be able to access sensitive class information to see it within Quest.
 
