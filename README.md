@@ -11,12 +11,12 @@ It also adds Instructor, Room and Status information to the Course Schedule tabl
 
 This extension uses your own signed-in UW Quest session, you must be able to access sensitive class information to see it within Quest.
 
-![](assets/quest-ui.png)
+![](assets/quest-search.png)
 
 <details>
 <summary>More screenshots</summary>
 
-![](assets/sidequest-screenshot.png)
+![](assets/uwflow.png)
 
 </details>
 
