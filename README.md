@@ -1,7 +1,7 @@
 # UW Sidequest
 
-[![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.2/sidequest-v0.2.2.zip)
-[![Firefox Add-ons](https://img.shields.io/badge/Firefox-get%20the%20add--on-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/uw-sidequest/)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/uw-sidequest/meldhnjgpiingaeogojgpbmldagpmggl)
+[![Firefox Add-ons](https://img.shields.io/badge/Firefox-Add--ons-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/uw-sidequest/)
 
 > Note: This extension is not affiliated with the University of Waterloo
 
@@ -24,19 +24,21 @@ This extension uses your own signed-in UW Quest session, you must be able to acc
 
 ### Chrome
 
-1. Download the extension archive:
+1. Open [UW Sidequest on the Chrome Web Store](https://chromewebstore.google.com/detail/uw-sidequest/meldhnjgpiingaeogojgpbmldagpmggl).
+2. Click **Add to Chrome** and confirm the permissions.
 
-   [![Chrome ZIP](https://img.shields.io/badge/Chrome-download%20ZIP-4285F4?logo=googlechrome&logoColor=white)](https://github.com/hhhapz/sidequest/releases/download/v0.2.2/sidequest-v0.2.2.zip)
+To install it manually instead:
 
+1. Download the ZIP from the [latest release](https://github.com/hhhapz/sidequest/releases/latest).
 2. Unzip it.
 3. Open `chrome://extensions`.
 4. Turn on Developer mode.
-5. Click Load unpacked and select the unzipped folder containing `manifest.json`.
+5. Click **Load unpacked** and select the folder containing `manifest.json`.
 
 ### Firefox 140 or newer
 
-[![Firefox Add-ons](https://img.shields.io/badge/Firefox-get%20the%20add--on-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/uw-sidequest/)
-
+1. Open [UW Sidequest on Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/uw-sidequest/).
+2. Click **Add to Firefox** and confirm the permissions.
 
 ## Why?
 
