@@ -8,33 +8,9 @@ const api = globalThis.browser ?? chrome;
 
 const HOUR = 60 * 60 * 1000;
 
-async function direct(url, init) {
-  let res;
-  try {
-    res = await fetch(url, { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(20000), ...init });
-  } catch (err) {
-    if (err.name === 'TimeoutError') {
-      throw new Error('quest timed out');
-    }
-    if (!navigator.onLine) {
-      throw new Error('offline');
-    }
-    // a signed out quest redirects to the login server, which fetch can't follow
-    throw new SignedOut();
-  }
-  return { url: res.url, text: await res.text() };
-}
-
-// in a firefox container our own fetch has no cookies, an open quest tab does
-async function relay(url, init) {
-  const tabs = await api.tabs.query({ url: QUEST + '/*' });
-  for (const tab of tabs) {
-    const res = await api.tabs.sendMessage(tab.id, { type: 'fetch', url, init }).catch(() => null);
-    if (res) {
-      return res;
-    }
-  }
-  throw new SignedOut();
+function scope(sender) {
+  const tab = sender.tab || {};
+  return `${tab.incognito ? 'private' : 'normal'}:${tab.cookieStoreId || 'default'}`;
 }
 
 class Client {
@@ -46,21 +22,26 @@ class Client {
   async search(site, q) {
     const key = 'block:' + this.name;
     let block = (await api.storage.session.get(key))[key];
+    if (block && block.split('_')[0] !== site) {
+      block = null;
+    }
 
     for (let tries = 0; ; tries++) {
       try {
-        const form = searchForm(await this.send(searchURL(block || site + '_newwin')));
-        block = form.block;
+        const page = await this.send(searchURL(block || site + '_newwin'));
+        block = searchForm(page).block;
         await api.storage.session.set({ [key]: block });
 
-        const res = parseResults(await this.send(form.action, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: form.query(q),
-        }));
-        if (res.term && res.term !== q.term) {
-          throw new Error('quest answered for another term');
-        }
+        const res = await queryQuest(
+          page,
+          {
+            CLASS_SRCH_WRK2_STRM: q.term,
+            SSR_CLSRCH_WRK_SUBJECT: q.subject,
+            SSR_CLSRCH_WRK_SSR_EXACT_MATCH1: 'E',
+            SSR_CLSRCH_WRK_CATALOG_NBR: q.catalog,
+          },
+          this.send,
+        );
         return res.sections;
       } catch (err) {
         if (!(err instanceof Stale) || tries > 0) {
@@ -72,21 +53,52 @@ class Client {
   }
 }
 
-const clients = [new Client('direct', direct), new Client('relay', relay)];
-
-async function search(site, q) {
+async function search(site, q, sender) {
+  const clients = [];
+  const store = sender.tab && sender.tab.cookieStoreId;
+  if (!sender.tab?.incognito && (!store || store === 'firefox-default')) {
+    clients.push(new Client(scope(sender) + ':direct', fetchQuest));
+  }
+  const tabs = await api.tabs.query({ url: QUEST + '/*' });
+  for (const tab of tabs) {
+    if (scope({ tab }) !== scope(sender)) {
+      continue;
+    }
+    const send = async (url, init) => {
+      const res = await api.tabs
+        .sendMessage(tab.id, { type: 'fetch', url, init }, { frameId: 0 })
+        .catch(() => null);
+      if (!res) {
+        throw new Unreachable('Quest tab closed or reloaded. Open Quest and try again.');
+      }
+      if (res.state === 'signin') {
+        throw new SignedOut();
+      }
+      if (res.state === 'error') {
+        throw new Error(res.why);
+      }
+      if (res.state === 'unreachable') {
+        throw new Unreachable(res.why);
+      }
+      return res;
+    };
+    clients.push(new Client(scope(sender) + ':tab:' + tab.id, send));
+  }
+  let failure = null;
   for (const client of clients) {
     try {
-      const sections = await client.search(site, q);
-      if (client !== clients[0]) {
-        clients.reverse();
-      }
-      return sections;
+      return await client.search(site, q);
     } catch (err) {
-      if (!(err instanceof SignedOut)) {
+      if (!(err instanceof SignedOut) && !(err instanceof Unreachable)) {
         throw err;
       }
+      if (err instanceof Unreachable) {
+        failure = err;
+      }
     }
+  }
+  if (failure) {
+    throw failure;
   }
   throw new SignedOut();
 }
@@ -99,25 +111,23 @@ function queue(fn) {
   return last;
 }
 
-const recent = [];
-
-function throttle() {
+async function throttle() {
   const now = Date.now();
-  while (recent.length > 0 && now - recent[0] > 5 * 60 * 1000) {
-    recent.shift();
-  }
+  const stored = await api.storage.session.get('recentSearches');
+  const recent = (stored.recentSearches || []).filter((at) => now - at < 5 * 60 * 1000);
   if (recent.length >= 40) {
     throw new Error('too many searches, try again in a few minutes');
   }
   recent.push(now);
+  await api.storage.session.set({ recentSearches: recent });
 }
 
-function cacheKey(q) {
-  return `c:${q.subject}|${q.catalog}|${q.term}`;
+function cacheKey(q, sender) {
+  return `c:${scope(sender)}:${q.subject}|${q.catalog}|${q.term}`;
 }
 
-async function cached(q) {
-  const key = cacheKey(q);
+async function cached(q, sender) {
+  const key = cacheKey(q, sender);
   const hit = (await api.storage.local.get(key))[key];
   if (!hit) {
     return { state: 'miss' };
@@ -127,16 +137,19 @@ async function cached(q) {
 
 const pending = new Map();
 
-function refresh(q) {
-  const key = cacheKey(q);
+function refresh(q, sender) {
+  const key = cacheKey(q, sender);
   if (!pending.has(key)) {
-    pending.set(key, queue(() => load(q)).finally(() => pending.delete(key)));
+    pending.set(
+      key,
+      queue(() => load(q, sender)).finally(() => pending.delete(key)),
+    );
   }
   return pending.get(key);
 }
 
-async function load(q) {
-  throttle();
+async function load(q, sender) {
+  await throttle();
 
   // never guess the site, a request to the wrong one signs the user out
   const { site } = await api.storage.local.get('site');
@@ -144,13 +157,13 @@ async function load(q) {
     throw new SignedOut();
   }
 
-  const hit = { sections: await search(site, q), at: Date.now() };
-  await api.storage.local.set({ [cacheKey(q)]: hit });
+  const hit = { sections: await search(site, q, sender), at: Date.now() };
+  await api.storage.local.set({ [cacheKey(q, sender)]: hit });
   return { state: 'ok', ...hit, fresh: true };
 }
 
 async function signin(msg, sender) {
-  await api.storage.session.set({ opener: sender.tab.id });
+  await api.storage.session.set({ ['opener:' + scope(sender)]: sender.tab.id });
   return {};
 }
 
@@ -162,12 +175,20 @@ async function page(msg, sender) {
   const site = block.split('_')[0];
   await api.storage.local.set({ site });
 
-  const { opener } = await api.storage.session.get('opener');
-  if (opener && sender.tab.openerTabId === opener) {
-    await api.storage.session.remove('opener');
+  const key = 'opener:' + scope(sender);
+  const opener = (await api.storage.session.get(key))[key];
+  if (opener !== undefined && sender.tab.openerTabId === opener) {
+    await api.storage.session.remove(key);
     await api.tabs.update(opener, { active: true }).catch(() => {});
 
-    const reachable = await queue(async () => new Form(await direct(searchURL(site + '_newwin')))).then(() => true, () => false);
+    const store = sender.tab.cookieStoreId;
+    const reachable =
+      !sender.tab.incognito &&
+      (!store || store === 'firefox-default') &&
+      (await queue(async () => new Form(await fetchQuest(searchURL(site + '_newwin')))).then(
+        () => true,
+        () => false,
+      ));
     if (reachable) {
       await api.tabs.remove(sender.tab.id).catch(() => {});
     }
@@ -182,10 +203,14 @@ async function options() {
   return {};
 }
 
-const handlers = { cached, refresh, signin, page, options };
+async function context(msg, sender) {
+  return scope(sender);
+}
+
+const handlers = { cached, refresh, signin, page, options, context };
 
 api.runtime.onMessage.addListener((msg, sender, respond) => {
-  const handler = handlers[msg.type];
+  const handler = msg && Object.hasOwn(handlers, msg.type) && handlers[msg.type];
   if (!handler) {
     return;
   }

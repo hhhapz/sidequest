@@ -2,18 +2,26 @@
 
 const api = globalThis.browser ?? chrome;
 
-// quest may put the classic page in an iframe, only the top frame reports and relays
-if (window === window.top) {
-  const signedIn = document.querySelector('form[name^="win"] input[name="ICSID"]') !== null;
-  api.runtime.sendMessage({ type: 'page', signedIn, path: location.pathname });
+const signedIn = document.querySelector('form[name^="win"] input[name="ICSID"]') !== null;
+api.runtime.sendMessage({ type: 'page', signedIn, path: location.pathname }).catch(() => {});
 
+// only the top frame relays, so each request has one response
+if (window === window.top) {
   api.runtime.onMessage.addListener((msg, sender, respond) => {
     if (msg.type !== 'fetch' || !msg.url.startsWith(location.origin + '/psc/')) {
       return;
     }
-    fetch(msg.url, { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(20000), ...msg.init })
-      .then(async (res) => respond({ url: res.url, text: await res.text() }))
-      .catch(() => respond(null));
+    fetchQuest(msg.url, msg.init)
+      .then(respond)
+      .catch((err) => {
+        let state = 'error';
+        if (err instanceof SignedOut) {
+          state = 'signin';
+        } else if (err instanceof Unreachable) {
+          state = 'unreachable';
+        }
+        respond({ state, why: err.message });
+      });
     return true;
   });
 }

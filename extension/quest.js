@@ -13,6 +13,63 @@ class SignedOut extends Error {}
 
 class Stale extends Error {}
 
+class Unreachable extends Error {}
+
+async function fetchQuest(url, init) {
+  let res;
+  let text;
+  try {
+    res = await fetch(url, {
+      credentials: 'include',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(60000),
+      ...init,
+    });
+    text = await res.text();
+  } catch (err) {
+    if (err.name === 'TimeoutError') {
+      throw new Error('Quest timed out');
+    }
+    if (!navigator.onLine) {
+      throw new Error('Offline. Check your connection.');
+    }
+    throw new Unreachable('Could not reach Quest. Check your connection or open Quest to sign in.');
+  }
+  if (isLogin(res)) {
+    throw new SignedOut();
+  }
+  if (!res.ok) {
+    throw new Error(`Quest returned HTTP ${res.status}`);
+  }
+  return { url: res.url, text };
+}
+
+async function queryQuest(page, values, send) {
+  let form = searchForm(page);
+  const post = (values) =>
+    send(form.action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.body({ ICAJAX: '0', ...values }),
+    });
+
+  const term = form.field('CLASS_SRCH_WRK2_STRM');
+  const want = values.CLASS_SRCH_WRK2_STRM;
+  if (form.fields.get(term) !== want && termsOf(page).includes(want)) {
+    form = new Form(await post({ ICAction: term, CLASS_SRCH_WRK2_STRM: want }));
+  }
+  page = await post({ ICAction: SEARCH, ...values });
+  if (isPrompt(page)) {
+    form = new Form(page);
+    page = await post({ ICAction: '#ICSave' });
+  }
+  const result = parseResults(page);
+  if (result.term !== want) {
+    throw new Error('Quest returned results for an unexpected term.');
+  }
+  return { page, ...result };
+}
+
 function searchURL(block) {
   return `${QUEST}/psc/${block}/ACADEMIC/SA/c/UW_CEM.UW_CLASS_SRCH.GBL?Page=UW_SSRCLSRCH_ENT&Action=U`;
 }
@@ -23,22 +80,27 @@ function blockOf(path) {
 }
 
 function isLogin(page) {
-  return !page.url.startsWith(QUEST) || /[?&]cmd=(login|logout|expire)/.test(page.url);
+  return new URL(page.url).origin !== QUEST || /[?&]cmd=(login|logout|expire)/i.test(page.url);
+}
+
+function decode(text) {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|amp|quot|apos|lt|gt|nbsp);/gi, (entity, name) => {
+    if (name[0] === '#') {
+      const number =
+        name[1].toLowerCase() === 'x' ? parseInt(name.slice(2), 16) : Number(name.slice(1));
+      return number > 0 && number <= 0x10ffff ? String.fromCodePoint(number) : entity;
+    }
+    return { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ' }[name.toLowerCase()];
+  });
 }
 
 function attr(tag, name) {
   const m = tag.match(new RegExp(`\\b${name}=(?:'([^']*)'|"([^"]*)")`));
-  return m ? m[1] ?? m[2] : null;
+  return m ? decode(m[1] ?? m[2]) : null;
 }
 
 function clean(html) {
-  return html.replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
+  return decode(html.replace(/<[^>]*>/g, ' '))
     .replace(/[‎‏‪-‮]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -49,16 +111,18 @@ class Form {
     if (isLogin(page)) {
       throw new SignedOut();
     }
-    const html = (page.text.match(/<form\b[^>]*name='win\d+'[\s\S]*?<\/form>/) || [''])[0];
+    const html = (page.text.match(/<form\b[^>]*name=['"]win\d+['"][\s\S]*?<\/form>/) || [''])[0];
 
-    this.action = attr(html, 'action');
+    const action = attr(html, 'action');
+    this.action = action ? new URL(action, page.url).href : null;
     this.block = blockOf(new URL(page.url).pathname);
     this.fields = new Map();
 
     for (const tag of html.match(/<input\b[^>]*>|<select\b[\s\S]*?<\/select>/g) || []) {
       if (tag.startsWith('<select')) {
-        const option = tag.match(/<option value="([^"]*)" selected/) || tag.match(/<option value="([^"]*)"/);
-        this.fields.set(attr(tag, 'name'), option ? option[1] : '');
+        const options = tag.match(/<option\b[^>]*>/g) || [];
+        const selected = options.find((option) => /\bselected\b/.test(option)) || options[0];
+        this.fields.set(attr(tag, 'name'), selected ? attr(selected, 'value') || '' : '');
         continue;
       }
       // checkboxes are mirrored by hidden $chk fields
@@ -68,7 +132,7 @@ class Form {
       }
     }
 
-    if (!this.fields.has('ICSID')) {
+    if (!this.action || !this.block || !this.fields.has('ICSID')) {
       throw new Stale('Unexpected Quest page');
     }
   }
@@ -96,17 +160,6 @@ class Form {
     }
     return body;
   }
-
-  query(q) {
-    return this.body({
-      ICAJAX: '1',
-      ICAction: SEARCH,
-      CLASS_SRCH_WRK2_STRM: q.term,
-      SSR_CLSRCH_WRK_SUBJECT: q.subject,
-      SSR_CLSRCH_WRK_SSR_EXACT_MATCH1: 'E',
-      SSR_CLSRCH_WRK_CATALOG_NBR: q.catalog,
-    });
-  }
 }
 
 function searchForm(page) {
@@ -118,10 +171,13 @@ function searchForm(page) {
 }
 
 function termsOf(page) {
-  const select = page.text.match(/<select\b[^>]*name='CLASS_SRCH_WRK2_STRM[\s\S]*?<\/select>/);
+  const select = page.text.match(/<select\b[^>]*name=['"]CLASS_SRCH_WRK2_STRM[\s\S]*?<\/select>/);
   const terms = [];
-  for (const m of select ? select[0].matchAll(/<option value="(\d+)"/g) : []) {
-    terms.push(m[1]);
+  for (const option of select ? select[0].match(/<option\b[^>]*>/g) || [] : []) {
+    const value = attr(option, 'value');
+    if (/^1\d\d[159]$/.test(value)) {
+      terms.push(value);
+    }
   }
   return terms;
 }
@@ -142,12 +198,25 @@ function parseResults(page) {
     throw new SignedOut();
   }
   const xml = page.text;
-  if (/search returns no results/i.test(xml)) {
-    return { term: null, sections: [] };
-  }
+  const noResults = /search returns no results/i.test(xml);
   const message = messageOf(page);
-  if (message) {
+  if (message && !noResults) {
     throw new Error(message);
+  }
+  const label = clean(xml.replace(/<script[\s\S]*?<\/script>/g, '')).match(
+    /\| (Winter|Spring|Fall) 20(\d\d)\b/,
+  );
+  let term = label ? `1${label[2]}${{ Winter: 1, Spring: 5, Fall: 9 }[label[1]]}` : null;
+  if (!term) {
+    const select = xml.match(/<select\b[^>]*name=['"]CLASS_SRCH_WRK2_STRM[\s\S]*?<\/select>/);
+    const option = select && (select[0].match(/<option\b[^>]*\bselected\b[^>]*>/) || [])[0];
+    term = option ? attr(option, 'value') : null;
+  }
+  if (!/^1\d\d[159]$/.test(term)) {
+    throw new Stale('Could not determine Quest term');
+  }
+  if (noResults) {
+    return { term, sections: [] };
   }
 
   const cell = (id, n) => {
@@ -155,7 +224,8 @@ function parseResults(page) {
     if (!m) {
       return null;
     }
-    return m[1].split(/<br \/>|,/)
+    return m[1]
+      .split(/<br\s*\/?>|,/i)
       .map(clean)
       .filter((s) => s && s !== 'TBA' && s !== 'To be Announced');
   };
@@ -187,9 +257,6 @@ function parseResults(page) {
     throw new Stale('Unexpected Quest page');
   }
 
-  // the term label carries invisible direction marks, which clean drops
-  const m = clean(xml.replace(/<script[\s\S]*?<\/script>/g, '')).match(/\| (Winter|Spring|Fall) 20(\d\d)\b/);
-  const term = m ? `1${m[2]}${{ Winter: 1, Spring: 5, Fall: 9 }[m[1]]}` : null;
   return { term, sections };
 }
 
@@ -215,7 +282,7 @@ function parseDetail(page) {
     waitCapacity: number('Wait List Capacity'),
     waitTotal: number('Wait List Total'),
     seats: number('Available Seats'),
-    requirements: between('Enrollment Information', 'Enrollment Requirements'),
+    requirements: between('Enrollment Requirements', 'Class Notes'),
     notes: between('Class Notes', 'Description'),
   };
   if (detail.capacity === null) {
