@@ -23,3 +23,19 @@ jobs:
         run: gh release create "$GITHUB_REF_NAME" "sidequest-$GITHUB_REF_NAME.zip" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+
+  firefox:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: submit listed Firefox version
+        run: npx --yes web-ext@10.7.0 sign --channel=listed --source-dir=extension --artifacts-dir=signed --amo-metadata=amo-metadata.json --approval-timeout=0
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
