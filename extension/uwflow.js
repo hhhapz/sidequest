@@ -13,6 +13,7 @@ const HEADER_TEXT = '[class*="Table__HeaderText"]';
 const ROW = '[class*="Table__TableRow"]';
 const CELL = '[class*="Table__TableCell"]:not(.sq-col)';
 const CELL_TEXT = '[class*="CourseSchedule__ContentWrapper"]';
+const TABS = '[class*="TabContainer__TabsWrapper"]';
 
 let course = null;
 let path = null;
@@ -26,40 +27,76 @@ class Course {
 		this.catalog = catalog;
 		this.classes = new Map();
 		this.terms = new Map();
+		this.state = "loading";
+		this.why = "";
 	}
 
 	async loadClasses() {
-		const res = await fetch("/graphql", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				query:
-					"query($code: String) { course(where: { code: { _eq: $code } }) { sections { term_id class_number } } }",
-				variables: { code: (this.subject + this.catalog).toLowerCase() },
-			}),
-		});
-		const body = await res.json();
-		for (const s of body.data.course[0].sections) {
-			const term = String(s.term_id);
-			if (!this.classes.has(term)) {
-				this.classes.set(term, new Set());
-			}
-			this.classes.get(term).add(String(s.class_number));
+		if (this.busy) {
+			return;
 		}
+		this.busy = true;
+		this.state = "loading";
 		render();
+		try {
+			const res = await fetch("/graphql", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					query:
+						"query($code: String) { course(where: { code: { _eq: $code } }) { sections { term_id class_number } } }",
+					variables: { code: (this.subject + this.catalog).toLowerCase() },
+				}),
+				signal: AbortSignal.timeout(20000),
+			});
+			if (!res.ok) {
+				throw new Error(`UW Flow returned HTTP ${res.status}`);
+			}
+			const body = await res.json();
+			if (body.errors?.length || !body.data?.course?.[0]) {
+				throw new Error(
+					body.errors?.[0]?.message || "UW Flow did not return this course.",
+				);
+			}
+			this.classes.clear();
+			for (const section of body.data.course[0].sections) {
+				const term = String(section.term_id);
+				if (!this.classes.has(term)) {
+					this.classes.set(term, new Set());
+				}
+				this.classes.get(term).add(String(section.class_number));
+			}
+			this.state = "ok";
+		} catch (err) {
+			this.state = "error";
+			this.why =
+				err.name === "TimeoutError" ? "UW Flow timed out." : err.message;
+		} finally {
+			this.busy = false;
+			render();
+		}
 	}
 
-	termOf(numbers) {
-		let best = null;
-		let most = 0;
+	termOf(numbers, selected) {
+		if (numbers.length === 0 || numbers.some((number) => !number)) {
+			return null;
+		}
+		if (selected) {
+			const classes = this.classes.get(selected);
+			return classes && numbers.every((number) => classes.has(number))
+				? selected
+				: null;
+		}
+		let match = null;
 		for (const [term, set] of this.classes) {
-			const n = numbers.filter((number) => set.has(number)).length;
-			if (n > most) {
-				best = term;
-				most = n;
+			if (numbers.every((number) => set.has(number))) {
+				if (match) {
+					return null;
+				}
+				match = term;
 			}
 		}
-		return best;
+		return match;
 	}
 
 	ask(type, term) {
@@ -99,10 +136,29 @@ class Course {
 	}
 
 	async refresh(term) {
-		this.terms.get(term).busy = true;
+		const entry = this.terms.get(term);
+		if (!entry || entry.busy) {
+			return;
+		}
+		entry.busy = true;
 		render();
 		this.update(term, await this.ask("refresh", term));
 	}
+}
+
+function selectedTerm(table) {
+	const tabs = table.querySelector(TABS);
+	for (const tab of tabs ? tabs.querySelectorAll("button") : []) {
+		if (getComputedStyle(tab).fontWeight !== "600") {
+			continue;
+		}
+		const label = tab.textContent.match(/\b(Winter|Spring|Fall)\s+20(\d\d)\b/i);
+		if (label) {
+			const month = { winter: 1, spring: 5, fall: 9 }[label[1].toLowerCase()];
+			return `1${label[2]}${month}`;
+		}
+	}
+	return null;
 }
 
 function termLabel(term) {
@@ -123,7 +179,7 @@ function age(at) {
 
 // opened from here so the tab lands in the same firefox container
 function openQuest() {
-	api.runtime.sendMessage({ type: "signin" });
+	api.runtime.sendMessage({ type: "signin" }).catch(() => {});
 	const home = site
 		? `/psc/${site}/ACADEMIC/SA/c/NUI_FRAMEWORK.PT_LANDINGPAGE.GBL`
 		: "";
@@ -154,6 +210,9 @@ function addHeader(table) {
 		return;
 	}
 	const template = row.querySelectorAll(HEADER_CELL)[1];
+	if (!template) {
+		return;
+	}
 	for (const name of COLUMNS) {
 		const cell = template.cloneNode(true);
 		cell.classList.add("sq-col");
@@ -170,10 +229,12 @@ function fill(row, term, number, entry) {
 	if (row.dataset.sq === mark && row.querySelector(".sq-col")) {
 		return;
 	}
+	const template = row.querySelectorAll(CELL)[1];
+	if (!template) {
+		return;
+	}
 	row.dataset.sq = mark;
 	row.querySelectorAll(".sq-col").forEach((cell) => cell.remove());
-
-	const template = row.querySelectorAll(CELL)[1];
 	cells.forEach((value, i) => {
 		const cell = template.cloneNode(true);
 		cell.classList.add("sq-col");
@@ -206,7 +267,7 @@ function chipText(entry) {
 		return {
 			dot: "alert",
 			word: "retry",
-			line: `Quest error: ${entry.why}.`,
+			line: entry.why,
 			note: saved,
 			button: "Retry",
 		};
@@ -224,9 +285,12 @@ function chipText(entry) {
 function addChip(table, term, entry) {
 	let chip = document.getElementById("sq-chip");
 	if (!chip) {
-		chip = document.createElement("span");
+		chip = document.createElement("button");
+		chip.type = "button";
 		chip.id = "sq-chip";
-		chip.onclick = () => {
+		chip.setAttribute("aria-controls", "sq-panel");
+		chip.onclick = (event) => {
+			event.stopPropagation();
 			panelOpen = !panelOpen;
 			render();
 		};
@@ -238,6 +302,7 @@ function addChip(table, term, entry) {
 
 	const text = chipText(entry);
 	chip.classList.toggle("open", panelOpen);
+	chip.setAttribute("aria-expanded", String(panelOpen));
 	chip.replaceChildren(
 		el("span", "sq-mark", "Sidequest"),
 		el("span", "sq-dot " + text.dot),
@@ -267,7 +332,7 @@ function addChip(table, term, entry) {
 			"div",
 			"sq-head",
 			el("span", "sq-mark", "Sidequest"),
-			el("span", "term", "· " + termLabel(term)),
+			term && el("span", "term", "· " + termLabel(term)),
 		),
 		el("div", "sq-rule"),
 		el(
@@ -284,6 +349,8 @@ function addChip(table, term, entry) {
 			render();
 			if (entry.state === "signin") {
 				openQuest();
+			} else if (!term) {
+				course.loadClasses();
 			} else {
 				course.refresh(term);
 			}
@@ -318,32 +385,58 @@ function clear() {
 // uwflow reuses rows when the term tab changes, so every row is redone each time
 function render() {
 	observer.disconnect();
-
-	const table = course && document.querySelector(SCHEDULE);
-	const rows = [];
-	for (const row of table ? table.querySelectorAll(ROW) : []) {
-		const cells = row.querySelectorAll(CELL);
-		if (cells.length > 1) {
-			rows.push({ row, number: (cells[1].textContent.match(/\d+/) || [])[0] });
+	try {
+		const table = enabled && course && document.querySelector(SCHEDULE);
+		if (!table) {
+			clear();
+			return;
 		}
-	}
+		if (course.state !== "ok") {
+			table.querySelectorAll(".sq-col").forEach((node) => node.remove());
+			addChip(table, null, { state: course.state, why: course.why });
+			return;
+		}
+		const rows = [];
+		for (const row of table.querySelectorAll(ROW)) {
+			const cells = row.querySelectorAll(CELL);
+			if (cells.length > 1) {
+				rows.push({
+					row,
+					number: (cells[1].textContent.match(/\d+/) || [])[0],
+				});
+			}
+		}
 
-	const term = course && course.termOf(rows.map((r) => r.number));
-	if (!term) {
-		clear();
-	} else {
+		const term = course.termOf(
+			rows.map((r) => r.number),
+			selectedTerm(table),
+		);
+		if (!term) {
+			clear();
+			return;
+		}
 		if (!course.terms.has(term)) {
 			course.load(term);
 		}
 		const entry = course.terms.get(term);
 		addHeader(table);
-		for (const r of rows) {
-			fill(r.row, term, r.number, entry);
+		for (const row of rows) {
+			fill(row.row, term, row.number, entry);
 		}
 		addChip(table, term, entry);
+	} finally {
+		if (enabled) {
+			observer.observe(document.body, { childList: true, subtree: true });
+			const tabs = document.querySelector(SCHEDULE + " " + TABS);
+			if (tabs) {
+				observer.observe(tabs, {
+					attributes: true,
+					subtree: true,
+					attributeFilter: ["class", "style", "aria-selected"],
+				});
+			}
+		}
 	}
-
-	observer.observe(document.body, { childList: true, subtree: true });
 }
 
 const observer = new MutationObserver(render);
