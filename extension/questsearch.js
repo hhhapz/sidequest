@@ -1,7 +1,5 @@
 'use strict';
 
-// api comes from questtab.js, Form and the parsers from quest.js, the page from questpage.js
-
 const FLOW = 'https://uwflow.com';
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -36,7 +34,20 @@ let site = null;
 let block = null;
 let index = null;
 let seq = 0;
+let historySeq = 0;
 let last = Promise.resolve();
+let cacheScope = null;
+
+class Cancelled extends Error {}
+
+function checkSearch(id, historyId) {
+  if (id !== undefined && (id !== seq || !on('questSearch'))) {
+    throw new Cancelled();
+  }
+  if (historyId !== undefined && (historyId !== historySeq || !on('questHistory'))) {
+    throw new Cancelled();
+  }
+}
 
 function on(flag) {
   return flags[flag] !== false;
@@ -44,24 +55,11 @@ function on(flag) {
 
 // how many terms to offer, counting the current one
 function termCount() {
-  return flags.termCount || 6;
-}
-
-async function questFetch(url, init) {
-  let res;
-  try {
-    res = await fetch(url, { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(60000), ...init });
-  } catch (err) {
-    if (err.name === 'TimeoutError') {
-      throw new Error('Quest timed out');
-    }
-    throw new SignedOut();
-  }
-  return { url: res.url, text: await res.text() };
+  return Math.min(12, Math.max(2, Math.floor(Number(flags.termCount) || 6)));
 }
 
 function post(form, values) {
-  return questFetch(form.action, {
+  return fetchQuest(form.action, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form.body({ ICAJAX: '0', ...values }),
@@ -76,7 +74,7 @@ function queue(fn) {
 
 async function entry() {
   for (let tries = 0; ; tries++) {
-    const page = await questFetch(searchURL(block || site + '_newwin'));
+    const page = await fetchQuest(searchURL(block || site + '_newwin'));
     try {
       const form = searchForm(page);
       block = form.block;
@@ -91,37 +89,32 @@ async function entry() {
 }
 
 async function search(values) {
-  let { form, page } = await entry();
-
-  // like quest's own page, a listed term is changed in a round trip of its own first,
-  // otherwise the search can come back for the term the block was already on
-  const term = form.field('CLASS_SRCH_WRK2_STRM');
-  const want = values.CLASS_SRCH_WRK2_STRM;
-  if (form.fields.get(term) !== want && termsOf(page).includes(want)) {
-    form = new Form(await post(form, { ICAction: term, CLASS_SRCH_WRK2_STRM: want }));
+  for (let tries = 0; ; tries++) {
+    try {
+      const { page } = await entry();
+      return await queryQuest(page, values, fetchQuest);
+    } catch (err) {
+      if (!(err instanceof Stale) || tries > 0) {
+        throw err;
+      }
+      block = null;
+    }
   }
-
-  page = await post(form, { ICAction: SEARCH, ...values });
-  if (isPrompt(page)) {
-    page = await post(new Form(page), { ICAction: '#ICSave' });
-  }
-  const res = parseResults(page);
-  if (res.term && res.term !== values.CLASS_SRCH_WRK2_STRM) {
-    throw new Error(`Quest returned ${termName(res.term)}, not ${termName(values.CLASS_SRCH_WRK2_STRM)}.`);
-  }
-  return res;
 }
 
 async function detail(term, section) {
-  const { form } = await entry();
-  const page = await post(form, {
-    ICAction: SEARCH,
+  const result = await search({
     CLASS_SRCH_WRK2_STRM: term,
     SSR_CLSRCH_WRK_SUBJECT: section.course.split(' ')[0],
     SSR_CLSRCH_WRK_CLASS_NBR: section.classNumber,
   });
-  parseResults(page);
-  return parseDetail(await post(new Form(page), { ICAction: 'MTG_CLASSNAME$0' }));
+  const number = result.sections.findIndex(
+    (s) => s.classNumber === section.classNumber && s.course === section.course,
+  );
+  if (number < 0) {
+    throw new Error('Quest did not return the requested class.');
+  }
+  return parseDetail(await post(new Form(result.page), { ICAction: 'MTG_CLASSNAME$' + number }));
 }
 
 function criteria(target, term) {
@@ -144,19 +137,23 @@ function criteria(target, term) {
 }
 
 // every answer from quest is kept for half an hour, across reloads too
-async function kept(key, load) {
-  const name = 'r:' + key;
+async function kept(key, load, id, historyId) {
+  checkSearch(id, historyId);
+  const name = 'r:' + cacheScope + ':' + key;
   const stored = (await api.storage.local.get(name))[name];
   if (stored && Date.now() - stored.at < KEEP) {
     return stored.value;
   }
-  const value = await queue(load);
+  const value = await queue(() => {
+    checkSearch(id, historyId);
+    return load();
+  });
   await api.storage.local.set({ [name]: { at: Date.now(), value } });
   return value;
 }
 
-function searchKept(values) {
-  return kept(JSON.stringify(values), async () => (await search(values)).sections);
+function searchKept(values, id, historyId) {
+  return kept(JSON.stringify(values), async () => (await search(values)).sections, id, historyId);
 }
 
 async function prune() {
@@ -165,26 +162,27 @@ async function prune() {
   await api.storage.local.remove(old);
 }
 
-async function find(target, term) {
+async function find(target, term, id) {
+  checkSearch(id);
   if (target.kind === 'many') {
     const all = new Map();
     for (const part of target.targets) {
-      for (const s of await find(part, term)) {
+      for (const s of await find(part, term, id)) {
         all.set(s.classNumber, s);
       }
     }
     return [...all.values()];
   }
   if (target.kind === 'prof') {
-    const { mine, all } = await taught(target, term);
+    const { mine, all } = await taught(target, term, id);
     return target.full ? mine : all;
   }
   if (target.kind === 'course') {
-    return searchKept(criteria(target, term));
+    return searchKept(criteria(target, term), id);
   }
 
   // a level like cs 2xx is cut from its whole subject, so the two share one search
-  const all = await searchKept(criteria({ kind: 'subject', subject: target.subject }, term));
+  const all = await searchKept(criteria({ kind: 'subject', subject: target.subject }, term), id);
   if (target.kind === 'level') {
     return all.filter((s) => s.course.split(' ')[1].startsWith(target.level));
   }
@@ -193,7 +191,7 @@ async function find(target, term) {
 
 // quest searches by last name and uwflow's names aren't always in quest's order,
 // so each word is tried as the last name until the person turns up
-async function taught(target, term) {
+async function taught(target, term, id, historyId) {
   const words = target.name.trim().split(/\s+/);
   let tries = [words[words.length - 1]];
   if (target.word) {
@@ -204,7 +202,8 @@ async function taught(target, term) {
 
   let res = null;
   for (const word of tries) {
-    const sections = await searchKept(criteria({ ...target, last: word }, term));
+    checkSearch(id, historyId);
+    const sections = await searchKept(criteria({ ...target, last: word }, term), id, historyId);
     const mine = sections.filter((s) => s.instructors.some((name) => nameKey(name) === nameKey(target.name)));
     if (res === null || mine.length > 0) {
       res = { mine, all: sections };
@@ -218,18 +217,26 @@ async function taught(target, term) {
 }
 
 async function loadHistory(target, id) {
-  state.history = recentTerms(termCount()).map((term) => ({ term, state: 'loading' }));
+  const historyId = ++historySeq;
+  const entries = recentTerms(termCount()).map((term) => ({ term, state: 'loading' }));
+  state.history = entries;
   render();
 
-  for (const entry of state.history) {
+  for (const entry of entries) {
+    if (id !== seq || historyId !== historySeq || !on('questHistory')) {
+      return;
+    }
     try {
-      entry.sections = (await taught(target, entry.term)).mine;
+      entry.sections = (await taught(target, entry.term, id, historyId)).mine;
       entry.state = 'ok';
     } catch (err) {
+      if (err instanceof Cancelled) {
+        return;
+      }
       entry.state = 'error';
       entry.why = err instanceof SignedOut ? 'Signed out of Quest.' : err.message;
     }
-    if (id !== seq) {
+    if (id !== seq || historyId !== historySeq || !on('questHistory')) {
       return;
     }
     render();
@@ -237,6 +244,10 @@ async function loadHistory(target, id) {
 }
 
 async function run() {
+  if (!state.term || cacheScope === null || !on('questSearch')) {
+    return;
+  }
+  const id = ++seq;
   // whatever is still typed becomes a tag too
   if (state.query.trim()) {
     const typed = resolve(state.query);
@@ -246,14 +257,17 @@ async function run() {
       render();
       return;
     }
-    state.items.push(...(typed.kind === 'many' ? typed.targets : [typed]));
+    for (const item of typed.kind === 'many' ? typed.targets : [typed]) {
+      if (!state.items.some((saved) => saved.label === item.label)) {
+        state.items.push(item);
+      }
+    }
     state.query = '';
   }
   if (state.items.length === 0) {
     return;
   }
 
-  const id = ++seq;
   const term = state.term;
   let target = state.items[0];
   if (state.items.length > 1) {
@@ -261,14 +275,14 @@ async function run() {
   }
 
   // the search lives in the url's hash so back and forward work
-  const hash = '#' + new URLSearchParams({ q: target.label, term });
+  const parts = target.kind === 'many' ? target.targets : [target];
+  const hash = '#' + new URLSearchParams({ q: target.label, term, targets: JSON.stringify(parts) });
   if (location.hash !== hash) {
     history.pushState(null, '', hash);
   }
 
   state.status = 'loading';
   state.label = target.label;
-  const parts = target.kind === 'many' ? target.targets : [target];
   state.whole = parts.some((t) => t.kind === 'subject' || t.kind === 'level');
   state.open = null;
   state.history = null;
@@ -277,7 +291,7 @@ async function run() {
   render();
 
   try {
-    const sections = await find(target, term);
+    const sections = await find(target, term, id);
     if (id !== seq) {
       return;
     }
@@ -303,14 +317,36 @@ function toggleDetail(section) {
   const term = state.term;
   const key = term + '|' + section.classNumber;
   state.open = state.open === key ? null : key;
-  const entry = details.get(key);
-  if (state.open && (!entry || entry.state === 'error' || Date.now() - entry.at > KEEP)) {
-    details.set(key, { state: 'loading', at: Date.now() });
-    kept('detail|' + key, () => detail(term, section))
-      .then((d) => details.set(key, { state: 'ok', detail: d, at: Date.now() }))
-      .catch((err) => details.set(key, { state: 'error', why: err instanceof SignedOut ? 'Signed out of Quest.' : err.message }))
-      .then(render);
+  if (state.open) {
+    loadDetail(section);
   }
+  render();
+}
+
+function loadDetail(section) {
+  const term = state.term;
+  const key = term + '|' + section.classNumber;
+  if (details.get(key)?.state === 'loading') {
+    return;
+  }
+  const id = seq;
+  details.set(key, { state: 'loading' });
+  queue(() => {
+    checkSearch(id);
+    return detail(term, section);
+  })
+    .then((result) => details.set(key, { state: 'ok', detail: result, at: Date.now() }))
+    .catch((err) => {
+      if (err instanceof Cancelled) {
+        details.delete(key);
+        return;
+      }
+      details.set(key, {
+        state: 'error',
+        why: err instanceof SignedOut ? 'Signed out of Quest.' : err.message,
+      });
+    })
+    .then(render);
   render();
 }
 
@@ -319,8 +355,16 @@ async function flowQuery(query, variables) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(20000),
   });
-  return (await res.json()).data;
+  if (!res.ok) {
+    throw new Error(`UW Flow returned HTTP ${res.status}`);
+  }
+  const body = await res.json();
+  if (body.errors?.length || !body.data) {
+    throw new Error(body.errors?.[0]?.message || 'Unexpected UW Flow response');
+  }
+  return body.data;
 }
 
 // ratings, requisites, and enrolment that uwflow copies from uw's api once a day
@@ -361,7 +405,7 @@ async function loadReviews(code) {
     );
     flowReviews.set(code, { state: 'ok', list: data.course.length > 0 ? data.course[0].reviews : [] });
   } catch (err) {
-    flowReviews.set(code, { state: 'error' });
+    flowReviews.set(code, { state: 'error', why: err.message });
   }
   render();
 }
@@ -475,14 +519,17 @@ function resolve(text) {
   }
 
   const q = text.trim();
-  const level = q.match(/^([a-z]+)\s*(\d)$/i);
+  const level = q.match(/^([a-z]+)\s*(\d)(?:xx)?$/i);
   if (level) {
     return levelTarget(level[1], level[2]);
   }
   if (/^[a-z]+\s*\d+[a-z]*$/i.test(q)) {
     return courseTarget(q.replace(/\s+/g, ''));
   }
-  if (/^[a-z]+$/i.test(q) && (!index || index.subjects.has(q.toLowerCase()))) {
+  if (
+    /^[a-z]+$/i.test(q) &&
+    (index ? index.subjects.has(q.toLowerCase()) : q === q.toUpperCase())
+  ) {
     return subjectTarget(q);
   }
   const first = suggest(q)[0];
@@ -499,15 +546,51 @@ function save() {
   if (!on('questRemember')) {
     return;
   }
-  const { items, hideClosed, hideExtra, hideGrad } = state;
-  api.storage.local.set({ lastSearch: { items, hideClosed, hideExtra, hideGrad } });
+  const { items, term, hideClosed, hideExtra, hideGrad } = state;
+  api.storage.local.set({ lastSearch: { items, term, hideClosed, hideExtra, hideGrad } });
+}
+
+function readTargets(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  const targets = [];
+  for (const item of items) {
+    if (!item || typeof item.kind !== 'string') {
+      return [];
+    }
+    if (item.kind === 'prof' && typeof item.name === 'string' && item.name.trim()) {
+      targets.push(profTarget(item.name, item.full === true));
+      continue;
+    }
+    if (typeof item.subject !== 'string' || !/^[a-z]+$/i.test(item.subject)) {
+      return [];
+    }
+    if (item.kind === 'subject') {
+      targets.push(subjectTarget(item.subject));
+    } else if (item.kind === 'level' && /^\d$/.test(item.level)) {
+      targets.push(levelTarget(item.subject, String(item.level)));
+    } else if (
+      item.kind === 'course' &&
+      typeof item.catalog === 'string' &&
+      /^\d+[a-z]*$/i.test(item.catalog)
+    ) {
+      targets.push(courseTarget(item.subject + item.catalog));
+    } else {
+      return [];
+    }
+  }
+  return targets;
 }
 
 function restore(saved) {
   if (!saved || !on('questRemember')) {
     return false;
   }
-  state.items = saved.items || [];
+  state.items = readTargets(saved.items);
+  if (/^1\d\d[159]$/.test(saved.term)) {
+    state.term = saved.term;
+  }
   state.hideClosed = Boolean(saved.hideClosed);
   state.hideExtra = Boolean(saved.hideExtra);
   state.hideGrad = Boolean(saved.hideGrad);

@@ -160,18 +160,11 @@ function renderDrawer() {
 	const desc = el("p", "sq-desc", flow.description || "");
 	desc.onclick = () => desc.classList.toggle("sq-open-desc");
 
+	const title = el("div", "");
+	title.append(el("div", "sq-panel-code", courseTarget(flow.code).label));
+	title.append(el("div", "sq-panel-name", flow.name));
 	const parts = [
-		el(
-			"div",
-			"sq-panel-head",
-			el(
-				"div",
-				"",
-				el("div", "sq-panel-code", courseTarget(flow.code).label),
-				el("div", "sq-panel-name", flow.name),
-			),
-			close,
-		),
+		el("div", "sq-panel-head", title, close),
 		on("questReviews") && meters(flow),
 		flow.description && desc,
 		panelPart(
@@ -192,26 +185,16 @@ function renderDrawer() {
 
 	const leads = flow.postrequisites.filter((p) => p.postrequisite);
 	if (leads.length > 0) {
-		parts.push(
-			panelPart(
-				`Leads To · ${leads.length}`,
-				el(
-					"div",
-					"sq-leads",
-					...leads.map((p) =>
-						el(
-							"div",
-							"sq-lead",
-							courseLink(
-								p.postrequisite.code,
-								courseTarget(p.postrequisite.code).label,
-							),
-							el("span", "sq-lead-name", p.postrequisite.name),
-						),
-					),
-				),
-			),
-		);
+		const list = el("div", "sq-leads");
+		for (const { postrequisite } of leads) {
+			const pick = courseLink(
+				postrequisite.code,
+				courseTarget(postrequisite.code).label,
+			);
+			const name = el("span", "sq-lead-name", postrequisite.name);
+			list.append(el("div", "sq-lead", pick, name));
+		}
+		parts.push(panelPart(`Leads To · ${leads.length}`, list));
 	}
 
 	if (on("questReviews")) {
@@ -260,7 +243,15 @@ function reviews(code) {
 	if (!entry || entry.state === "loading") {
 		return [el("p", "sq-none", "Loading…")];
 	}
-	if (entry.state === "error" || entry.list.length === 0) {
+	if (entry.state === "error") {
+		const retry = button("sq-link", "Retry", () => {
+			flowReviews.delete(code);
+			loadReviews(code);
+			render();
+		});
+		return [el("p", "sq-none", "Could not load reviews. ", retry)];
+	}
+	if (entry.list.length === 0) {
 		return [el("p", "sq-none", "No reviews")];
 	}
 	return entry.list.map((r) => {
@@ -360,8 +351,12 @@ function shell() {
 			const rest = parts.pop();
 			const typed = parts.filter((part) => part.trim()).map(resolve);
 			if (!typed.includes(null)) {
-				state.items.push(...typed);
-				input.value = rest.trimStart();
+				for (const item of typed) {
+					if (!state.items.some((saved) => saved.label === item.label)) {
+						state.items.push(item);
+					}
+				}
+				state.query = rest.trimStart();
 				render();
 			}
 		}
@@ -555,8 +550,9 @@ function render() {
 			count.append(new Option(`${n} terms`, n));
 		}
 		count.value = termCount();
-		count.onchange = () => {
-			flags.termCount = Number(count.value);
+		count.onchange = async () => {
+			const stored = await api.storage.local.get("flags");
+			flags = { ...stored.flags, termCount: Number(count.value) };
 			api.storage.local.set({ flags });
 			buildTerms();
 			render();
@@ -593,14 +589,16 @@ function results() {
 		];
 	}
 	if (state.status === "error") {
-		return [
-			el(
-				"div",
-				"sq-card sq-problem",
-				state.why + " ",
-				button("sq-link", "Retry", run),
-			),
-		];
+		const canRetry =
+			cacheScope !== null && (state.items.length > 0 || state.query.trim());
+		const retry = button("sq-link", canRetry ? "Retry" : "Reload", () => {
+			if (canRetry) {
+				run();
+				return;
+			}
+			location.reload();
+		});
+		return [el("div", "sq-card sq-problem", state.why + " ", retry)];
 	}
 
 	const total = state.sections.length;
@@ -767,9 +765,13 @@ function sectionRow(s, week) {
 	const key = state.term + "|" + s.classNumber;
 	const open = state.open === key;
 
-	const number = button("sq-nbr", s.classNumber, () => {
-		navigator.clipboard.writeText(s.classNumber);
-		number.textContent = "Copied";
+	const number = button("sq-nbr", s.classNumber, async () => {
+		try {
+			await navigator.clipboard.writeText(s.classNumber);
+			number.textContent = "Copied";
+		} catch (err) {
+			number.textContent = "Copy failed";
+		}
 		setTimeout(() => {
 			number.textContent = s.classNumber;
 		}, 1200);
@@ -852,7 +854,7 @@ function sectionRow(s, week) {
 		),
 	);
 	if (open) {
-		row.append(detailView(details.get(key)));
+		row.append(detailView(details.get(key), s));
 	}
 	return row;
 }
@@ -883,8 +885,8 @@ function enrolled(key, s) {
 	return open;
 }
 
-function detailView(entry) {
-	if (entry.state === "loading") {
+function detailView(entry, section) {
+	if (!entry || entry.state === "loading") {
 		return el(
 			"div",
 			"sq-detail sq-wait",
@@ -892,7 +894,12 @@ function detailView(entry) {
 		);
 	}
 	if (entry.state === "error") {
-		return el("div", "sq-detail sq-problem", entry.why);
+		return el(
+			"div",
+			"sq-detail sq-problem",
+			entry.why,
+			button("sq-link", "Retry", () => loadDetail(section)),
+		);
 	}
 
 	const d = entry.detail;
@@ -914,6 +921,14 @@ function detailView(entry) {
 			stat("Waitlist", `${d.waitTotal} / ${d.waitCapacity}`),
 		),
 	);
+	view.append(
+		el(
+			"div",
+			"sq-note",
+			"Fetched " + new Date(entry.at).toLocaleTimeString() + ". ",
+			button("sq-link", "Refresh", () => loadDetail(section)),
+		),
+	);
 	if (d.requirements) {
 		view.append(el("p", "sq-note", d.requirements));
 	}
@@ -930,6 +945,17 @@ function fromHash() {
 	}
 	state.items = [];
 	state.query = params.get("q");
+	if (params.has("targets")) {
+		try {
+			const targets = readTargets(JSON.parse(params.get("targets")));
+			if (targets.length > 0) {
+				state.items = targets;
+				state.query = "";
+			}
+		} catch (err) {
+			// old links still resolve from q
+		}
+	}
 	if (/^1\d\d[159]$/.test(params.get("term"))) {
 		state.term = params.get("term");
 	}
@@ -955,21 +981,13 @@ async function start() {
 	}
 
 	document.documentElement.classList.add("sq-take");
-	const font = document.createElement("link");
-	font.rel = "stylesheet";
-	font.href =
-		"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap";
-	document.head.append(font);
+	state.term = currentTerm();
 	const root = shell();
 	root.id = "sq-root";
 	root.classList.toggle("sq-compact", flags.questCompact === true);
 	document.body.append(root);
-	api.storage.onChanged.addListener((changes) => {
-		if (changes.flags) {
-			const compact = (changes.flags.newValue || {}).questCompact === true;
-			root.classList.toggle("sq-compact", compact);
-		}
-	});
+	root.hidden = !on("questSearch");
+	document.documentElement.classList.toggle("sq-take", on("questSearch"));
 	render();
 
 	prune().catch((err) => console.warn("sidequest: prune", err));
@@ -982,6 +1000,10 @@ async function start() {
 
 	let page;
 	try {
+		cacheScope = await api.runtime.sendMessage({ type: "context" });
+		if (typeof cacheScope !== "string") {
+			throw new Error("Extension was reloaded. Refresh the page.");
+		}
 		page = (await queue(entry)).page;
 	} catch (err) {
 		state.status = err instanceof SignedOut ? "signin" : "error";
@@ -992,7 +1014,6 @@ async function start() {
 
 	listed = termsOf(page);
 	buildTerms();
-	state.term = currentTerm();
 
 	const stored = await api.storage.local.get("lastSearch");
 	let again = restore(stored.lastSearch);
@@ -1009,7 +1030,15 @@ async function start() {
 	window.addEventListener("popstate", () => {
 		if (fromHash()) {
 			run();
+			return;
 		}
+		seq++;
+		state.items = [];
+		state.query = "";
+		state.status = "idle";
+		state.history = null;
+		state.open = null;
+		render();
 	});
 	for (const key in checks) {
 		checks[key].checked = state[key];
@@ -1024,10 +1053,63 @@ async function start() {
 
 // under /psp/ the classic page is in an iframe, which gets its own copy of this
 if (/^\/psc\/.*\/UW_CEM\.UW_CLASS_SRCH\.GBL/.test(location.pathname)) {
-	api.storage.local.get("flags").then((stored) => {
-		flags = stored.flags || {};
-		if (on("questSearch")) {
-			start();
+	let started = false;
+	function applyFlags(next) {
+		const previous = flags;
+		flags = next || {};
+		if (!started && on("questSearch")) {
+			started = true;
+			start().catch((err) => console.warn("sidequest: start", err));
+			return;
 		}
+		if (!ui) {
+			return;
+		}
+		const root = document.getElementById("sq-root");
+		root.hidden = !on("questSearch");
+		root.classList.toggle("sq-compact", flags.questCompact === true);
+		document.documentElement.classList.toggle("sq-take", on("questSearch"));
+		if (!on("questSearch")) {
+			seq++;
+			state.status = "idle";
+		}
+		if (!on("questHistory")) {
+			historySeq++;
+			state.history = null;
+		}
+		if (!on("questDetail")) {
+			state.open = null;
+		}
+		buildTerms();
+		closePicks();
+		render();
+		if (on("questSuggest") && (!index || previous.questSuggest === false)) {
+			loadIndex().catch((err) => console.warn("sidequest: index", err));
+		}
+		if (
+			state.status === "ok" &&
+			(on("questRatings") || on("questCourseInfo"))
+		) {
+			loadFlow(state.sections, state.term);
+		}
+		const target = state.items.length === 1 && state.items[0];
+		if (
+			state.status === "ok" &&
+			target.kind === "prof" &&
+			target.full &&
+			on("questHistory") &&
+			(previous.questHistory === false ||
+				previous.termCount !== flags.termCount)
+		) {
+			loadHistory(target, seq);
+		}
+	}
+	api.storage.onChanged.addListener((changes, area) => {
+		if (area === "local" && changes.flags) {
+			applyFlags(changes.flags.newValue);
+		}
+	});
+	api.storage.local.get("flags").then((stored) => {
+		applyFlags(stored.flags);
 	});
 }

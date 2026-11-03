@@ -24,9 +24,10 @@ function render() {
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = name === 'questCompact' ? flags[name] === true : flags[name] !== false;
-    input.onchange = () => {
-      flags[name] = input.checked;
-      api.storage.local.set({ flags });
+    input.onchange = async () => {
+      const stored = await api.storage.local.get('flags');
+      flags = { ...stored.flags, [name]: input.checked };
+      await api.storage.local.set({ flags });
     };
 
     const text = document.createElement('div');
@@ -65,13 +66,22 @@ document.getElementById('forget').onclick = async () => {
 };
 
 const terms = document.getElementById('terms');
-terms.onchange = () => {
-  flags.termCount = Math.min(12, Math.max(2, Number(terms.value) || 6));
+terms.onchange = async () => {
+  const count = Math.min(12, Math.max(2, Math.floor(Number(terms.value) || 6)));
+  const stored = await api.storage.local.get('flags');
+  flags = { ...stored.flags, termCount: count };
   terms.value = flags.termCount;
-  api.storage.local.set({ flags });
+  await api.storage.local.set({ flags });
 };
 
 api.storage.local.get('flags').then((stored) => {
   flags = stored.flags || {};
   render();
+});
+
+api.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.flags) {
+    flags = changes.flags.newValue || {};
+    render();
+  }
 });

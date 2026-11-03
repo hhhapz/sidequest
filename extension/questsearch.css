@@ -13,7 +13,7 @@ html.sq-take body { overflow: visible !important; }
   --sq-inner: 16px;
   min-height: 100vh;
   color: #15171c;
-  font: 400 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font: 400 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   text-align: left;
 }
 #sq-root.sq-compact {
